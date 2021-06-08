@@ -26,18 +26,18 @@ for device in devices:
   if device.startswith('B2'):
     piano.append(device)
 
-print('Listening for MIDI from', piano[0])
-
-if piano[0] is None:
-  print('Piano not connected?')
+if len(piano) == 0:
+  print('Piano not connected / turned on?')
   quit()
+else:
+  print('Listening for MIDI from', piano[0])
 
 
 # =======================================================================
 # DECLARE SOME VARIABLES
 
 # array for all BLOBS
-all_things = []
+all_blobs = []
 
 # array for pixel color computation - to be written to the LED strip later
 rgb = [1] * NUM_OF_PIXELS # fill all of them with 1
@@ -50,43 +50,50 @@ throttle_f12 = 0
 # each Blob is a key pressed that evolves over time via its `update` method
 class Blob:
   def __init__(self, x, r, v):
-    self.x = x
-    self.r = r
-    self.v = v
+    self.x = x # x - location on x axis
+    self.r = r # radius
+    self.v = v # value == brightness
   
   def update(self):
     self.r = self.r + 1
-    self.v = math.floor(self.v * 0.8)
-
+    self.v = math.floor(self.v * 0.9)
 
 
 def add_note_to_workspace(key, val):
   pixels[key] = (val, val, val)
   pixels.show()
-  all_things.append(Blob(key, 1, val))
+  all_blobs.append(Blob(key, 1, val))
 
 
 def thread_function(name):
   while True:
 
-    print(len(all_things))
-    for blob in all_things:
+    global rgb
+
+    # print(len(all_blobs))
+
+    # first clear out the rgb array
+    rgb = [5] * NUM_OF_PIXELS
+
+    for blob in all_blobs:
       blob.update()
       for x in range(blob.x - blob.r, blob.x + blob.r):
         # pixels[x] = (blob.v, blob.v, blob.v)
-        rgb[x] = max(rgb[x] + blob.v, 255)
+        rgb[x] = min(rgb[x] + blob.v, 255)
 
     for idx, val in enumerate(rgb):
-      pixels[idx] = (math.floor(val * 0.8), math.floor(val * 0.8), math.floor(val * 0.8))
+      pixels[idx] = (math.floor(val), math.floor(val), math.floor(val))
 
     pixels.show()
 
-    sleep(0.1)
+    sleep(0.05)
     
-    all_things[:] = [a for a in all_things if a.v > 2]
+    all_blobs[:] = [a for a in all_blobs if a.v > 2]
+
 
 thread = threading.Thread(target=thread_function, args=(1,))
 thread.start()
+
 
 def handle_pedal(pedal):
   if pedal == 67:
@@ -135,7 +142,7 @@ with mido.open_input(piano[0]) as inport:
         # do nothing!
         pass
       else:
-        val = math.floor(raw * 2) # make dimmer
+        val = math.floor(raw) # make dimmer
         add_note_to_workspace(msg.note, val)
       # pixels[msg.note] = (val, val, val) 
     
