@@ -16,9 +16,6 @@ NUM_OF_PIXELS = 144
 
 pixels = neopixel.NeoPixel(board.D18, NUM_OF_PIXELS, brightness=0.2, auto_write=False)
 
-for x in range (0, NUM_OF_PIXELS):
-  pixels[x] = (0, 0, 0)
-
 devices = mido.get_input_names()
 piano = []
 
@@ -55,14 +52,14 @@ class Blob:
     self.v = v # value == brightness
   
   def update(self):
-    self.r = self.r + 1
-    self.v = math.floor(self.v * 0.9)
+    self.r = self.r + 1 # spread it out 
+    self.v = math.floor(self.v * 0.90) # dim it
 
 
 def add_note_to_workspace(key, val):
-  pixels[key] = (val, val, val)
-  pixels.show()
-  all_blobs.append(Blob(key, 1, val))
+  # pixels[key] = (val, val, val)
+  # pixels.show()
+  all_blobs.append(Blob(map_key_to_x(key), 1, val))
 
 
 def thread_function(name):
@@ -76,13 +73,20 @@ def thread_function(name):
     rgb = [5] * NUM_OF_PIXELS
 
     for blob in all_blobs:
+
       blob.update()
-      for x in range(blob.x - blob.r, blob.x + blob.r):
-        # pixels[x] = (blob.v, blob.v, blob.v)
-        rgb[x] = min(rgb[x] + blob.v, 255)
+
+      for x in range(math.floor(blob.x - blob.r), math.ceil(blob.x + blob.r)):
+
+        if (x >= 0 and x < NUM_OF_PIXELS):
+          scaler = (1 - abs(blob.x - x) / blob.r) ** 2
+          rgb[x] = min(rgb[x] + scaler * blob.v, 255) # never let it go above 255
+                                           # this can happen because we add many blobs together
 
     for idx, val in enumerate(rgb):
-      pixels[idx] = (math.floor(val), math.floor(val), math.floor(val))
+      pixels[idx] = (max(math.floor(val), 5), 
+                     max(math.floor(val), 5), 
+                     max(math.floor(val), 5))
 
     pixels.show()
 
@@ -130,6 +134,10 @@ def throttle_key(key):
     elif now > throttle_right + 0.5:
       throttle_right = now
       keyboard.press_and_release(key)
+
+# takes raw key (21 - 108) and returns x coordinate
+def map_key_to_x(key):
+  return (key - 65) * 2 + 72
 
 
 with mido.open_input(piano[0]) as inport:
