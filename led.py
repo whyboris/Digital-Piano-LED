@@ -102,7 +102,7 @@ def thread_function(name):
     sleep(0.05)
     
     # only keep blobs that are above brightness of 1
-    all_blobs[:] = [a for a in all_blobs if a.v > 1]
+    all_blobs[:] = [blob for blob in all_blobs if blob.v > 1]
 
 
 thread = threading.Thread(target=thread_function, args=(1,))
