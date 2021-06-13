@@ -15,6 +15,7 @@ from time import sleep
 from time import time
 import math
 import threading
+import colorsys
 
 import board
 import neopixel
@@ -48,12 +49,17 @@ all_blobs = {}
 min_bright = math.ceil(1 / BRIGHTNESS)
 
 # array for pixel color computation - to be written to the LED strip later
-rgb = [1] * NUM_OF_LED # fill all of them with 1
+rgb_r = [1] * NUM_OF_LED # fill all of them with 1
+rgb_g = [1] * NUM_OF_LED # fill all of them with 1
+rgb_b = [1] * NUM_OF_LED # fill all of them with 1
 
 # to throttle keyboard events
 throttle_left = 0
 throttle_right = 0
 throttle_f12 = 0
+
+color_bg = [1, 1, 2]
+color_key = [2, 1, 1]
 
 # each Blob is a key pressed that evolves over time via its `update` method
 class Blob:
@@ -76,14 +82,58 @@ def add_note_to_workspace(key, velocity):
   all_blobs[key] = Blob(map_key_to_x(key), 1, velocity, 'down')
 
 
+hue1 = 0.0
+hue2 = 0.09
+
+
+def update_colors():
+  global color_bg
+  global color_key
+  global hue1
+  global hue2
+  global all_blobs
+
+  hue1 = hue1 + 0.0005
+  if hue1 > 1:
+    hue1 = 0
+
+  hue2 = hue2 + 0.0005
+  if hue2 > 1:
+    hue2 = 0
+
+  # bg
+  (r1, g1, b1) = colorsys.hsv_to_rgb(hue1, 0.65, 0.1)
+  # keys
+  fudge = min(len(all_blobs) * 0.02, 0.2)
+  (r2, g2, b2) = colorsys.hsv_to_rgb(hue2, 0.8 + fudge, 0.1)
+
+  # print(round(r * 200, 2), 
+  #       round(g * 200, 2), 
+  #       round(b * 200, 2))
+
+  color_bg[0] = r1 * 150
+  color_bg[1] = g1 * 150
+  color_bg[2] = b1 * 150
+
+  color_key[0] = r2 * 40
+  color_key[1] = g2 * 40
+  color_key[2] = b2 * 40
+
+
 def thread_function(name):
   while True:
 
-    global rgb
+    global rgb_r
+    global rgb_g
+    global rgb_b
+
+    update_colors()
 
     # print(len(all_blobs)) # to check that blobs disappear after some time
 
-    rgb = [min_bright] * NUM_OF_LED # reset array to min
+    rgb_r = [color_bg[0]] * NUM_OF_LED # reset array to min
+    rgb_g = [color_bg[1]] * NUM_OF_LED # reset array to min
+    rgb_b = [color_bg[2]] * NUM_OF_LED # reset array to min
 
     for blob_key in all_blobs:
 
@@ -95,16 +145,21 @@ def thread_function(name):
 
         if (x >= 0 and x < NUM_OF_LED):
           scaler = (1 - abs(blob.x - x) / blob.r) ** 2
-          rgb[x] = min(rgb[x] + scaler * blob.v, 255) # never let it go above 255
-                                           # this can happen because we add many blobs together
+          # never let it go above 255
+          # this can happen because we add many blobs together
+          rgb_r[x] = min(rgb_r[x] + scaler * blob.v * color_key[0], 255) 
+          rgb_g[x] = min(rgb_g[x] + scaler * blob.v * color_key[1], 255) 
+          rgb_b[x] = min(rgb_b[x] + scaler * blob.v * color_key[2], 255) 
 
-    for idx, val in enumerate(rgb):
+    for x in range(0, NUM_OF_LED):
       # make sure these are integers
-      pixels[idx] = (math.floor(val), math.floor(val), math.floor(val))
+      pixels[x] = (math.floor(rgb_r[x]), 
+                   math.floor(rgb_g[x]), 
+                   math.floor(rgb_b[x]))
 
     pixels.show()
 
-    sleep(0.05)
+    sleep(0.05) # ~20 FPS
 
     to_delete = []
 
@@ -199,5 +254,5 @@ with mido.open_input(piano[0]) as inport:
       handle_pedal(msg.control, msg.value)
 
     else:
-      pring('something new and unknown!')
+      print('something new and unknown!')
       print(msg)
