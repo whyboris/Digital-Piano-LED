@@ -43,15 +43,15 @@ else:
 # Variables
 
 # array for all BLOBS
-all_blobs = []
+all_blobs = {}
 
-min_bright = math.ceil(1 / BRIGHTNESS) 
+min_bright = math.ceil(1 / BRIGHTNESS)
 
 # array for pixel color computation - to be written to the LED strip later
 rgb = [1] * NUM_OF_LED # fill all of them with 1
 
 # to throttle keyboard events
-throttle_left = 0 
+throttle_left = 0
 throttle_right = 0
 throttle_f12 = 0
 
@@ -61,16 +61,16 @@ class Blob:
     self.x = x # x - location on x axis
     self.r = r # radius
     self.v = v # value == brightness
-  
+
   def update(self):
-    self.r = self.r + 1 # spread it out 
+    self.r = self.r + 1 # spread it out
     self.v = math.floor(self.v * 0.90) # dim it
 
 
 def add_note_to_workspace(key, val):
   # pixels[key] = (val, val, val)
   # pixels.show()
-  all_blobs.append(Blob(map_key_to_x(key), 1, val))
+  all_blobs[key] = Blob(map_key_to_x(key), 1, val)
 
 
 def thread_function(name):
@@ -82,7 +82,9 @@ def thread_function(name):
 
     rgb = [min_bright] * NUM_OF_LED # reset array to min
 
-    for blob in all_blobs:
+    for blob_key in all_blobs:
+
+      blob = all_blobs[blob_key]
 
       blob.update()
 
@@ -100,9 +102,16 @@ def thread_function(name):
     pixels.show()
 
     sleep(0.05)
-    
+
+    to_delete = []
+
     # only keep blobs that are above brightness of 1
-    all_blobs[:] = [blob for blob in all_blobs if blob.v > 1]
+    for blob_key in all_blobs:
+      if all_blobs[blob_key].v < 2:
+        to_delete.append(blob_key)
+
+    for key in to_delete:
+      all_blobs.pop(key)
 
 
 thread = threading.Thread(target=thread_function, args=(1,))
@@ -126,9 +135,9 @@ def throttle_key(key):
   global throttle_right
   global throttle_f12
   now = time()
-  
+
   if key == 'left':
-  
+
     if now < throttle_right + 1 and now > throttle_f12 + 0.5:
       throttle_f12 = now
       keyboard.press_and_release('f12')
@@ -137,7 +146,7 @@ def throttle_key(key):
       keyboard.press_and_release(key)
 
   elif key == 'right':
-  
+
     if now < throttle_left + 1 and now > throttle_f12 + 0.5:
       throttle_f12 = now
       keyboard.press_and_release('f12')
@@ -164,8 +173,8 @@ with mido.open_input(piano[0]) as inport:
       else:
         val = math.floor(raw) # make dimmer
         add_note_to_workspace(msg.note, val)
-      # pixels[msg.note] = (val, val, val) 
-    
+      # pixels[msg.note] = (val, val, val)
+
     elif hasattr(msg, 'control'):
       # pedal pressed
       pedal = msg.control
