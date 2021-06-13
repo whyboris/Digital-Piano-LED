@@ -43,34 +43,37 @@ else:
 # Variables
 
 # array for all BLOBS
-all_blobs = []
+all_blobs = {}
 
-min_bright = math.ceil(1 / BRIGHTNESS) 
+min_bright = math.ceil(1 / BRIGHTNESS)
 
 # array for pixel color computation - to be written to the LED strip later
 rgb = [1] * NUM_OF_LED # fill all of them with 1
 
 # to throttle keyboard events
-throttle_left = 0 
+throttle_left = 0
 throttle_right = 0
 throttle_f12 = 0
 
 # each Blob is a key pressed that evolves over time via its `update` method
 class Blob:
-  def __init__(self, x, r, v):
+  def __init__(self, x, r, v, s):
     self.x = x # x - location on x axis
     self.r = r # radius
     self.v = v # value == brightness
-  
+    self.s = s # status: `down`, `legato`, or `decay`
+
   def update(self):
-    self.r = self.r + 1 # spread it out 
-    self.v = math.floor(self.v * 0.90) # dim it
+    if self.s == 'down' or self.s == 'legato':
+      self.r = min(self.r + 1, 5)
+      self.v = math.floor(self.v * 0.98)
+    else:
+      self.r = self.r + 1
+      self.v = math.floor(self.v * 0.75) # dim it
 
 
-def add_note_to_workspace(key, val):
-  # pixels[key] = (val, val, val)
-  # pixels.show()
-  all_blobs.append(Blob(map_key_to_x(key), 1, val))
+def add_note_to_workspace(key, velocity):
+  all_blobs[key] = Blob(map_key_to_x(key), 1, velocity, 'down')
 
 
 def thread_function(name):
@@ -82,7 +85,9 @@ def thread_function(name):
 
     rgb = [min_bright] * NUM_OF_LED # reset array to min
 
-    for blob in all_blobs:
+    for blob_key in all_blobs:
+
+      blob = all_blobs[blob_key]
 
       blob.update()
 
@@ -100,22 +105,45 @@ def thread_function(name):
     pixels.show()
 
     sleep(0.05)
-    
+
+    to_delete = []
+
     # only keep blobs that are above brightness of 1
-    all_blobs[:] = [blob for blob in all_blobs if blob.v > 1]
+    for blob_key in all_blobs:
+      if all_blobs[blob_key].v < 2:
+        to_delete.append(blob_key)
+
+    for key in to_delete:
+      all_blobs.pop(key)
 
 
 thread = threading.Thread(target=thread_function, args=(1,))
 thread.start()
 
+legato_pedal = 0 # 0 - not pressed, 1 - pressed
 
-def handle_pedal(pedal):
+
+def unlegato_all_keys():
+  for key in all_blobs:
+    if all_blobs[key].s == 'legato':
+      all_blobs[key].s = 'decay'
+
+
+def handle_pedal(pedal, value):
+  global legato_pedal
   if pedal == 67:
     throttle_key('left')
   elif pedal == 66:
     throttle_key('right')
   elif pedal == 64:
-    print('legato')
+    if legato_pedal == 0 and value != 0:
+      legato_pedal = 1
+      print('legato ON')
+    if value == 0:
+      legato_pedal = 0
+      print('legato OFF')
+      unlegato_all_keys()
+
   else:
     print('unknown!')
     print(msg)
@@ -126,9 +154,9 @@ def throttle_key(key):
   global throttle_right
   global throttle_f12
   now = time()
-  
+
   if key == 'left':
-  
+
     if now < throttle_right + 1 and now > throttle_f12 + 0.5:
       throttle_f12 = now
       keyboard.press_and_release('f12')
@@ -137,7 +165,7 @@ def throttle_key(key):
       keyboard.press_and_release(key)
 
   elif key == 'right':
-  
+
     if now < throttle_left + 1 and now > throttle_f12 + 0.5:
       throttle_f12 = now
       keyboard.press_and_release('f12')
@@ -157,19 +185,18 @@ with mido.open_input(piano[0]) as inport:
     # print(msg)
     if hasattr(msg, 'velocity'):
       # print(msg.velocity)
-      raw = msg.velocity
-      if raw == 64: # represents key-up velocity
-        # do nothing!
-        pass
+      if msg.velocity == 64: # represents key-up velocity
+        if msg.note in all_blobs: # key may have decayed and been removed already
+          if legato_pedal == 1:
+            all_blobs[msg.note].s = 'legato'
+          else:
+            all_blobs[msg.note].s = 'decay'
       else:
-        val = math.floor(raw) # make dimmer
-        add_note_to_workspace(msg.note, val)
-      # pixels[msg.note] = (val, val, val) 
-    
+        add_note_to_workspace(msg.note, msg.velocity)
+
     elif hasattr(msg, 'control'):
-      # pedal pressed
-      pedal = msg.control
-      handle_pedal(pedal)
+      # pedal numbers 64, 65, 66
+      handle_pedal(msg.control, msg.value)
 
     else:
       pring('something new and unknown!')
